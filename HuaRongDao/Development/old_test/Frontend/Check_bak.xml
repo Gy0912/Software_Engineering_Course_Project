@@ -1,0 +1,1318 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE nta PUBLIC '-//Uppaal Team//DTD Flat System 1.6//EN' 'http://www.it.uu.se/research/group/darts/uppaal/flat-1_6.dtd'>
+<nta>
+	<declaration>// Global Declarations
+const int ROWS = 5;
+const int COLS = 4;
+const int PIECE_COUNT = 10;
+const int STATE_LIMIT = 10000;
+
+int board[ROWS * COLS];
+
+const int sizes[PIECE_COUNT][2] = {
+  {2,1}, {2,2}, {2,1}, {2,1}, {1,2}, {2,1}, {1,1}, {1,1}, {1,1}, {1,1}
+};
+
+int positions[PIECE_COUNT];
+bool can_move[PIECE_COUNT][4];
+
+int visited[STATE_LIMIT][PIECE_COUNT];
+int queue[STATE_LIMIT][PIECE_COUNT];
+int queue_head = 0;
+int queue_tail = 0;
+int visited_count = 0;
+
+bool piece_is_valid(int piece_id) {
+    return (can_move[piece_id][0] == 1) || (can_move[piece_id][1] == 1) || (can_move[piece_id][2] == 1) || (can_move[piece_id][3] == 1);
+}
+
+bool no_piece_is_valid() {
+  for (i :int[0, 9]) {
+    if (piece_is_valid(i)) {
+        return false;
+    }
+  }
+  return true;
+}
+
+void copy_state(int &amp;src[PIECE_COUNT], int &amp;dest[PIECE_COUNT]) {
+  for (i : int[0, PIECE_COUNT - 1]) dest[i] = src[i];
+}
+
+bool state_equals(int &amp;a[PIECE_COUNT], int &amp;b[PIECE_COUNT]) {
+  for (i : int[0, PIECE_COUNT - 1]) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+bool state_in_visited(int &amp;current[PIECE_COUNT]) {
+  for (k : int[0, STATE_LIMIT - 1]) {
+    if (k &gt;= visited_count) return false;
+    if (state_equals(current, visited[k])) return true;
+  }
+  return false;
+}
+
+void add_state_to_visited(int &amp;current[PIECE_COUNT]) {
+  if (visited_count &lt; STATE_LIMIT)
+    copy_state(current, visited[visited_count++]);
+}
+
+void enqueue_state(int &amp;current[PIECE_COUNT]) {
+  if (queue_tail &lt; STATE_LIMIT)
+    copy_state(current, queue[queue_tail++]);
+}
+
+void load_front_state() {
+  if (queue_head &lt; queue_tail) {
+    copy_state(queue[queue_head], positions);
+
+    for (j : int[0, ROWS * COLS - 1]) board[j] = -1;
+    for (k : int[0, PIECE_COUNT - 1]) {
+      int r = positions[k] / COLS;
+      int c = positions[k] % COLS;
+      int h = sizes[k][0];
+      int w = sizes[k][1];
+
+      if (h == 2 &amp;&amp; w == 2) {
+        for (a : int[0,1]) for (b : int[0,1]) board[(r + a) * COLS + (c + b)] = k;
+      } else if (h == 2 &amp;&amp; w == 1) {
+        for (a : int[0,1]) board[(r + a) * COLS + c] = k;
+      } else if (h == 1 &amp;&amp; w == 2) {
+        for (b : int[0,1]) board[r * COLS + (c + b)] = k;
+      } else {
+        board[r * COLS + c] = k;
+      }
+    }
+  }
+}
+void dequeue_state() {
+  if (queue_head &lt; queue_tail) queue_head++;
+  load_front_state();
+}
+
+
+bool queue_is_empty() {
+  return queue_head &gt;= queue_tail;
+}
+
+bool is_valid_2x2(int pos, int direction, int piece_id) {
+  int row = pos / COLS;
+  int col = pos % COLS;
+  int temp[PIECE_COUNT];
+  int r = 0;
+  int c = 0;
+  if ((direction == 0 &amp;&amp; row == 0) ||
+      (direction == 1 &amp;&amp; row + 2 &gt;= ROWS) ||
+      (direction == 2 &amp;&amp; col == 0) ||
+      (direction == 3 &amp;&amp; col + 2 &gt;= COLS)) return false;
+
+  for (i : int[0,1]) {
+    for (j : int[0,1]) {
+      int r = row + i;
+      int c = col + j;
+      int new_r = r + (direction == 0 ? -1 : (direction == 1 ? 1 : 0));
+      int new_c = c + (direction == 2 ? -1 : (direction == 3 ? 1 : 0));
+      int new_idx = new_r * COLS + new_c;
+      int idx = r * COLS + c;
+      if (board[new_idx] != -1 &amp;&amp; board[new_idx] != board[idx]) return false;
+    }
+  }
+
+  copy_state(positions, temp);
+  r = temp[piece_id] / COLS;
+  c = temp[piece_id] % COLS;
+  r += (direction == 0 ? -1 : (direction == 1 ? 1 : 0));
+  c += (direction == 2 ? -1 : (direction == 3 ? 1 : 0));
+  temp[piece_id] = r * COLS + c;
+  return !state_in_visited(temp);
+}
+
+bool is_valid_2x1(int pos, int direction, int piece_id) {
+  int row = pos / COLS;
+  int col = pos % COLS;
+  int temp[PIECE_COUNT];
+  int r = 0;
+  int c = 0;
+  if ((direction == 0 &amp;&amp; row == 0) ||
+      (direction == 1 &amp;&amp; row + 2 &gt;= ROWS) ||
+      (direction == 2 &amp;&amp; col == 0) ||
+      (direction == 3 &amp;&amp; col + 1 &gt;= COLS)) return false;
+
+  for (i : int[0,1]) {
+    int r = row + i;
+    int c = col;
+    int new_r = r + (direction == 0 ? -1 : (direction == 1 ? 1 : 0));
+    int new_c = c + (direction == 2 ? -1 : (direction == 3 ? 1 : 0));
+    int new_idx = new_r * COLS + new_c;
+    int idx = r * COLS + c;
+    if (board[new_idx] != -1 &amp;&amp; board[new_idx] != board[idx]) return false;
+  }
+
+  copy_state(positions, temp);
+  r = temp[piece_id] / COLS;
+  c = temp[piece_id] % COLS;
+  r += (direction == 0 ? -1 : (direction == 1 ? 1 : 0));
+  c += (direction == 2 ? -1 : (direction == 3 ? 1 : 0));
+  temp[piece_id] = r * COLS + c;
+  return !state_in_visited(temp);
+}
+
+bool is_valid_1x2(int pos, int direction, int piece_id) {
+  int row = pos / COLS;
+  int col = pos % COLS;
+  int temp[PIECE_COUNT];
+  int r = 0;
+  int c = 0;
+  if ((direction == 0 &amp;&amp; row == 0) ||
+      (direction == 1 &amp;&amp; row + 1 &gt;= ROWS) ||
+      (direction == 2 &amp;&amp; col == 0) ||
+      (direction == 3 &amp;&amp; col + 2 &gt;= COLS)) return false;
+
+  for (j : int[0,1]) {
+    int r = row;
+    int c = col + j;
+    int new_r = r + (direction == 0 ? -1 : (direction == 1 ? 1 : 0));
+    int new_c = c + (direction == 2 ? -1 : (direction == 3 ? 1 : 0));
+    int new_idx = new_r * COLS + new_c;
+    int idx = r * COLS + c;
+    if (board[new_idx] != -1 &amp;&amp; board[new_idx] != board[idx]) return false;
+  }
+
+  copy_state(positions, temp);
+  r = temp[piece_id] / COLS;
+  c = temp[piece_id] % COLS;
+  r += (direction == 0 ? -1 : (direction == 1 ? 1 : 0));
+  c += (direction == 2 ? -1 : (direction == 3 ? 1 : 0));
+  temp[piece_id] = r * COLS + c;
+  return !state_in_visited(temp);
+}
+
+bool is_valid_1x1(int pos, int direction, int piece_id) {
+  int row = pos / COLS;
+  int col = pos % COLS;
+  int new_r = row + (direction == 0 ? -1 : (direction == 1 ? 1 : 0));
+  int new_c = col + (direction == 2 ? -1 : (direction == 3 ? 1 : 0));
+  int temp[PIECE_COUNT];
+  int new_idx = new_r * COLS + new_c;
+  if (new_r &lt; 0 || new_r &gt;= ROWS || new_c &lt; 0 || new_c &gt;= COLS) return false;
+  if (board[new_idx] != -1) return false;
+
+  copy_state(positions, temp);
+  temp[piece_id] = new_r * COLS + new_c;
+  return !state_in_visited(temp);
+}
+
+
+
+// Explicit move functions per size
+void move_2x2(int piece_id, int direction) {
+  int pos = positions[piece_id];
+  int row = pos / COLS;
+  int col = pos % COLS;
+  for (i : int[0,1]) for (j : int[0,1]) board[(row + i) * COLS + (col + j)] = -1;
+  row += (direction == 0 ? -1 : (direction == 1 ? 1 : 0));
+  col += (direction == 2 ? -1 : (direction == 3 ? 1 : 0));
+  positions[piece_id] = row * COLS + col;
+  for (i : int[0,1]) for (j : int[0,1]) board[(row + i) * COLS + (col + j)] = piece_id;
+  add_state_to_visited(positions);
+  enqueue_state(positions);
+}
+
+void move_2x1(int piece_id, int direction) {
+  int pos = positions[piece_id];
+  int row = pos / COLS;
+  int col = pos % COLS;
+  for (i : int[0,1]) board[(row + i) * COLS + col] = -1;
+  row += (direction == 0 ? -1 : (direction == 1 ? 1 : 0));
+  col += (direction == 2 ? -1 : (direction == 3 ? 1 : 0));
+  positions[piece_id] = row * COLS + col;
+  for (i : int[0,1]) board[(row + i) * COLS + col] = piece_id;
+  add_state_to_visited(positions);
+  enqueue_state(positions);
+}
+
+void move_1x2(int piece_id, int direction) {
+  int pos = positions[piece_id];
+  int row = pos / COLS;
+  int col = pos % COLS;
+  for (j : int[0,1]) board[row * COLS + (col + j)] = -1;
+  row += (direction == 0 ? -1 : (direction == 1 ? 1 : 0));
+  col += (direction == 2 ? -1 : (direction == 3 ? 1 : 0));
+  positions[piece_id] = row * COLS + col;
+  for (j : int[0,1]) board[row * COLS + (col + j)] = piece_id;
+  add_state_to_visited(positions);
+  enqueue_state(positions);
+}
+
+void move_1x1(int piece_id, int direction) {
+  int pos = positions[piece_id];
+  int row = pos / COLS;
+  int col = pos % COLS;
+  board[row * COLS + col] = -1;
+  row += (direction == 0 ? -1 : (direction == 1 ? 1 : 0));
+  col += (direction == 2 ? -1 : (direction == 3 ? 1 : 0));
+  positions[piece_id] = row * COLS + col;
+  board[row * COLS + col] = piece_id;
+  add_state_to_visited(positions);
+  enqueue_state(positions);
+}
+
+void move_0_0() { move_2x1(0,0); }
+void move_0_1() { move_2x1(0,1); }
+void move_0_2() { move_2x1(0,2); }
+void move_0_3() { move_2x1(0,3); }
+
+void move_1_0() { move_2x2(1,0); }
+void move_1_1() { move_2x2(1,1); }
+void move_1_2() { move_2x2(1,2); }
+void move_1_3() { move_2x2(1,3); }
+
+void move_2_0() { move_2x1(2,0); }
+void move_2_1() { move_2x1(2,1); }
+void move_2_2() { move_2x1(2,2); }
+void move_2_3() { move_2x1(2,3); }
+
+void move_3_0() { move_2x1(3,0); }
+void move_3_1() { move_2x1(3,1); }
+void move_3_2() { move_2x1(3,2); }
+void move_3_3() { move_2x1(3,3); }
+
+void move_4_0() { move_1x2(4,0); }
+void move_4_1() { move_1x2(4,1); }
+void move_4_2() { move_1x2(4,2); }
+void move_4_3() { move_1x2(4,3); }
+
+void move_5_0() { move_2x1(5,0); }
+void move_5_1() { move_2x1(5,1); }
+void move_5_2() { move_2x1(5,2); }
+void move_5_3() { move_2x1(5,3); }
+
+void move_6_0() { move_1x1(6,0); }
+void move_6_1() { move_1x1(6,1); }
+void move_6_2() { move_1x1(6,2); }
+void move_6_3() { move_1x1(6,3); }
+
+void move_7_0() { move_1x1(7,0); }
+void move_7_1() { move_1x1(7,1); }
+void move_7_2() { move_1x1(7,2); }
+void move_7_3() { move_1x1(7,3); }
+
+void move_8_0() { move_1x1(8,0); }
+void move_8_1() { move_1x1(8,1); }
+void move_8_2() { move_1x1(8,2); }
+void move_8_3() { move_1x1(8,3); }
+
+void move_9_0() { move_1x1(9,0); }
+void move_9_1() { move_1x1(9,1); }
+void move_9_2() { move_1x1(9,2); }
+void move_9_3() { move_1x1(9,3); }
+
+
+void main_check() {
+  for (i : int[0, PIECE_COUNT - 1]) {
+    for (d : int[0, 3]) {
+      if (sizes[i][0] == 2 &amp;&amp; sizes[i][1] == 2)
+        can_move[i][d] = is_valid_2x2(positions[i], d, i);
+      else if (sizes[i][0] == 2 &amp;&amp; sizes[i][1] == 1)
+        can_move[i][d] = is_valid_2x1(positions[i], d, i);
+      else if (sizes[i][0] == 1 &amp;&amp; sizes[i][1] == 2)
+        can_move[i][d] = is_valid_1x2(positions[i], d, i);
+      else
+        can_move[i][d] = is_valid_1x1(positions[i], d, i);
+    }
+  }
+}
+
+void init_board() {
+  for (i : int[0,ROWS*COLS-1]) board[i] = -1;
+
+  // Set board contents from string "0235023511441167#89#"
+  board[0]  = 0; board[1]  = 2; board[2]  = 3; board[3]  = 5;
+  board[4]  = 0; board[5]  = 2; board[6]  = 3; board[7]  = 5;
+  board[8]  = 1; board[9]  = 1; board[10] = 4; board[11] = 4;
+  board[12] = 1; board[13] = 1; board[14] = 6; board[15] = 7;
+  board[16] = -1; board[17] = 8; board[18] = 9; board[19] = -1;
+
+  // Assign positions
+  positions[0] = 0;   // 张飞
+  positions[1] = 8;   // 曹操
+  positions[2] = 1;   // 马超
+  positions[3] = 3;   // 黄忠
+  positions[4] = 10;  // 关羽
+  positions[5] = 2;   // 赵云
+  positions[6] = 15;  // 兵
+  positions[7] = 17;  // 兵
+  positions[8] = 18;  // 兵
+  positions[9] = 19;  // 兵
+
+  add_state_to_visited(positions);
+  enqueue_state(positions);
+  main_check();
+}
+
+
+bool check_success() {
+    return (board[17] == 1) &amp;&amp; (board[18] == 1);
+}
+
+</declaration>
+	<template>
+		<name x="5" y="5">Template</name>
+		<declaration>// Place local declarations here.
+</declaration>
+		<location id="id0" x="-1496" y="17">
+			<urgent/>
+		</location>
+		<location id="id1" x="-1156" y="-484">
+			<urgent/>
+		</location>
+		<location id="id2" x="-1156" y="-314">
+			<urgent/>
+		</location>
+		<location id="id3" x="-1156" y="-127">
+			<urgent/>
+		</location>
+		<location id="id4" x="-1164" y="51">
+			<urgent/>
+		</location>
+		<location id="id5" x="-1164" y="212">
+			<urgent/>
+		</location>
+		<location id="id6" x="-1164" y="569">
+			<urgent/>
+		</location>
+		<location id="id7" x="-1164" y="731">
+			<urgent/>
+		</location>
+		<location id="id8" x="-1164" y="909">
+			<urgent/>
+		</location>
+		<location id="id9" x="-1164" y="399">
+			<urgent/>
+		</location>
+		<location id="id10" x="-1156" y="-722">
+			<urgent/>
+		</location>
+		<location id="id11" x="-986" y="-833">
+			<urgent/>
+		</location>
+		<location id="id12" x="-986" y="-765">
+			<urgent/>
+		</location>
+		<location id="id13" x="-986" y="-705">
+			<urgent/>
+		</location>
+		<location id="id14" x="-986" y="-654">
+			<urgent/>
+		</location>
+		<location id="id15" x="-986" y="-587">
+			<urgent/>
+		</location>
+		<location id="id16" x="-986" y="-535">
+			<urgent/>
+		</location>
+		<location id="id17" x="-986" y="-484">
+			<urgent/>
+		</location>
+		<location id="id18" x="-986" y="-433">
+			<urgent/>
+		</location>
+		<location id="id19" x="-986" y="-374">
+			<urgent/>
+		</location>
+		<location id="id20" x="-986" y="-331">
+			<urgent/>
+		</location>
+		<location id="id21" x="-986" y="-289">
+			<urgent/>
+		</location>
+		<location id="id22" x="-986" y="-238">
+			<urgent/>
+		</location>
+		<location id="id23" x="-986" y="-187">
+			<urgent/>
+		</location>
+		<location id="id24" x="-986" y="-144">
+			<urgent/>
+		</location>
+		<location id="id25" x="-986" y="-102">
+			<urgent/>
+		</location>
+		<location id="id26" x="-986" y="-59">
+			<urgent/>
+		</location>
+		<location id="id27" x="-986" y="-1">
+			<urgent/>
+		</location>
+		<location id="id28" x="-986" y="42">
+			<urgent/>
+		</location>
+		<location id="id29" x="-986" y="84">
+			<urgent/>
+		</location>
+		<location id="id30" x="-986" y="127">
+			<urgent/>
+		</location>
+		<location id="id31" x="-986" y="170">
+			<urgent/>
+		</location>
+		<location id="id32" x="-986" y="212">
+			<urgent/>
+		</location>
+		<location id="id33" x="-986" y="255">
+			<urgent/>
+		</location>
+		<location id="id34" x="-986" y="297">
+			<urgent/>
+		</location>
+		<location id="id35" x="-986" y="340">
+			<urgent/>
+		</location>
+		<location id="id36" x="-986" y="382">
+			<urgent/>
+		</location>
+		<location id="id37" x="-986" y="425">
+			<urgent/>
+		</location>
+		<location id="id38" x="-986" y="467">
+			<urgent/>
+		</location>
+		<location id="id39" x="-986" y="510">
+			<urgent/>
+		</location>
+		<location id="id40" x="-986" y="552">
+			<urgent/>
+		</location>
+		<location id="id41" x="-986" y="595">
+			<urgent/>
+		</location>
+		<location id="id42" x="-986" y="637">
+			<urgent/>
+		</location>
+		<location id="id43" x="-986" y="680">
+			<urgent/>
+		</location>
+		<location id="id44" x="-986" y="722">
+			<urgent/>
+		</location>
+		<location id="id45" x="-986" y="765">
+			<urgent/>
+		</location>
+		<location id="id46" x="-986" y="807">
+			<urgent/>
+		</location>
+		<location id="id47" x="-986" y="859">
+			<urgent/>
+		</location>
+		<location id="id48" x="-986" y="901">
+			<urgent/>
+		</location>
+		<location id="id49" x="-986" y="944">
+			<urgent/>
+		</location>
+		<location id="id50" x="-986" y="986">
+			<urgent/>
+		</location>
+		<location id="id51" x="-833" y="-833">
+			<urgent/>
+		</location>
+		<location id="id52" x="-833" y="-765">
+			<urgent/>
+		</location>
+		<location id="id53" x="-833" y="-705">
+			<urgent/>
+		</location>
+		<location id="id54" x="-833" y="-654">
+			<urgent/>
+		</location>
+		<location id="id55" x="-833" y="-587">
+			<urgent/>
+		</location>
+		<location id="id56" x="-833" y="-535">
+			<urgent/>
+		</location>
+		<location id="id57" x="-833" y="-484">
+			<urgent/>
+		</location>
+		<location id="id58" x="-833" y="-433">
+			<urgent/>
+		</location>
+		<location id="id59" x="-833" y="-374">
+			<urgent/>
+		</location>
+		<location id="id60" x="-833" y="-331">
+			<urgent/>
+		</location>
+		<location id="id61" x="-833" y="-289">
+			<urgent/>
+		</location>
+		<location id="id62" x="-833" y="-238">
+			<urgent/>
+		</location>
+		<location id="id63" x="-833" y="-187">
+			<urgent/>
+		</location>
+		<location id="id64" x="-833" y="-144">
+			<urgent/>
+		</location>
+		<location id="id65" x="-833" y="-102">
+			<urgent/>
+		</location>
+		<location id="id66" x="-833" y="-59">
+			<urgent/>
+		</location>
+		<location id="id67" x="-1649" y="17">
+		</location>
+		<location id="id68" x="-833" y="-1">
+			<urgent/>
+		</location>
+		<location id="id69" x="-833" y="42">
+			<urgent/>
+		</location>
+		<location id="id70" x="-833" y="84">
+			<urgent/>
+		</location>
+		<location id="id71" x="-833" y="127">
+			<urgent/>
+		</location>
+		<location id="id72" x="-833" y="170">
+			<urgent/>
+		</location>
+		<location id="id73" x="-833" y="212">
+			<urgent/>
+		</location>
+		<location id="id74" x="-833" y="255">
+			<urgent/>
+		</location>
+		<location id="id75" x="-833" y="297">
+			<urgent/>
+		</location>
+		<location id="id76" x="-833" y="340">
+			<urgent/>
+		</location>
+		<location id="id77" x="-833" y="382">
+			<urgent/>
+		</location>
+		<location id="id78" x="-833" y="425">
+			<urgent/>
+		</location>
+		<location id="id79" x="-833" y="467">
+			<urgent/>
+		</location>
+		<location id="id80" x="-833" y="510">
+			<urgent/>
+		</location>
+		<location id="id81" x="-833" y="552">
+			<urgent/>
+		</location>
+		<location id="id82" x="-833" y="595">
+			<urgent/>
+		</location>
+		<location id="id83" x="-833" y="637">
+			<urgent/>
+		</location>
+		<location id="id84" x="-833" y="680">
+			<urgent/>
+		</location>
+		<location id="id85" x="-833" y="722">
+			<urgent/>
+		</location>
+		<location id="id86" x="-833" y="765">
+			<urgent/>
+		</location>
+		<location id="id87" x="-833" y="807">
+			<urgent/>
+		</location>
+		<location id="id88" x="-833" y="859">
+			<urgent/>
+		</location>
+		<location id="id89" x="-833" y="901">
+			<urgent/>
+		</location>
+		<location id="id90" x="-833" y="944">
+			<urgent/>
+		</location>
+		<location id="id91" x="-833" y="986">
+			<urgent/>
+		</location>
+		<location id="id92" x="-595" y="34">
+			<urgent/>
+		</location>
+		<location id="id93" x="-416" y="25">
+			<urgent/>
+		</location>
+		<location id="id94" x="-1496" y="-263">
+			<urgent/>
+		</location>
+		<init ref="id67"/>
+		<transition id="id95">
+			<source ref="id0"/>
+			<target ref="id67"/>
+			<label kind="guard" x="-1623" y="93">queue_is_empty()</label>
+			<nail x="-1564" y="102"/>
+		</transition>
+		<transition id="id96">
+			<source ref="id94"/>
+			<target ref="id0"/>
+			<label kind="assignment" x="-1571" y="-195">dequeue_state()</label>
+			<nail x="-1589" y="-127"/>
+		</transition>
+		<transition id="id97">
+			<source ref="id0"/>
+			<target ref="id94"/>
+			<label kind="guard" x="-1496" y="-157">no_piece_is_valid()</label>
+		</transition>
+		<transition id="id98">
+			<source ref="id93"/>
+			<target ref="id0"/>
+			<label kind="assignment" x="-1469" y="985">main_check()</label>
+			<nail x="-416" y="994"/>
+			<nail x="-1487" y="977"/>
+		</transition>
+		<transition id="id99">
+			<source ref="id92"/>
+			<target ref="id93"/>
+			<label kind="assignment" x="-577" y="29">load_front_state()</label>
+		</transition>
+		<transition id="id100">
+			<source ref="id0"/>
+			<target ref="id67"/>
+			<label kind="guard" x="-1546" y="-59">check_success()</label>
+			<nail x="-1564" y="-68"/>
+		</transition>
+		<transition id="id101">
+			<source ref="id57"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id102">
+			<source ref="id68"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id103">
+			<source ref="id91"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id104">
+			<source ref="id90"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id105">
+			<source ref="id89"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id106">
+			<source ref="id88"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id107">
+			<source ref="id87"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id108">
+			<source ref="id86"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id109">
+			<source ref="id85"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id110">
+			<source ref="id84"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id111">
+			<source ref="id83"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id112">
+			<source ref="id82"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id113">
+			<source ref="id81"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id114">
+			<source ref="id80"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id115">
+			<source ref="id79"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id116">
+			<source ref="id78"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id117">
+			<source ref="id77"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id118">
+			<source ref="id76"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id119">
+			<source ref="id75"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id120">
+			<source ref="id74"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id121">
+			<source ref="id73"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id122">
+			<source ref="id72"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id123">
+			<source ref="id71"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id124">
+			<source ref="id70"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id125">
+			<source ref="id69"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id126">
+			<source ref="id66"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id127">
+			<source ref="id65"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id128">
+			<source ref="id64"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id129">
+			<source ref="id63"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id130">
+			<source ref="id62"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id131">
+			<source ref="id61"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id132">
+			<source ref="id60"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id133">
+			<source ref="id59"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id134">
+			<source ref="id58"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id135">
+			<source ref="id56"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id136">
+			<source ref="id55"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id137">
+			<source ref="id54"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id138">
+			<source ref="id53"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id139">
+			<source ref="id52"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id140">
+			<source ref="id51"/>
+			<target ref="id92"/>
+		</transition>
+		<transition id="id141">
+			<source ref="id50"/>
+			<target ref="id91"/>
+			<label kind="assignment" x="-968" y="986">move_9_3()</label>
+		</transition>
+		<transition id="id142">
+			<source ref="id49"/>
+			<target ref="id90"/>
+			<label kind="assignment" x="-968" y="944">move_9_2()</label>
+		</transition>
+		<transition id="id143">
+			<source ref="id48"/>
+			<target ref="id89"/>
+			<label kind="assignment" x="-968" y="901">move_9_1()</label>
+		</transition>
+		<transition id="id144">
+			<source ref="id47"/>
+			<target ref="id88"/>
+			<label kind="assignment" x="-968" y="859">move_9_0()</label>
+		</transition>
+		<transition id="id145">
+			<source ref="id46"/>
+			<target ref="id87"/>
+			<label kind="assignment" x="-968" y="807">move_8_3()</label>
+		</transition>
+		<transition id="id146">
+			<source ref="id45"/>
+			<target ref="id86"/>
+			<label kind="assignment" x="-968" y="765">move_8_2()</label>
+		</transition>
+		<transition id="id147">
+			<source ref="id44"/>
+			<target ref="id85"/>
+			<label kind="assignment" x="-968" y="722">move_8_1()</label>
+		</transition>
+		<transition id="id148">
+			<source ref="id43"/>
+			<target ref="id84"/>
+			<label kind="assignment" x="-968" y="680">move_8_0()</label>
+		</transition>
+		<transition id="id149">
+			<source ref="id42"/>
+			<target ref="id83"/>
+			<label kind="assignment" x="-968" y="637">move_7_3()</label>
+		</transition>
+		<transition id="id150">
+			<source ref="id41"/>
+			<target ref="id82"/>
+			<label kind="assignment" x="-968" y="595">move_7_2()</label>
+		</transition>
+		<transition id="id151">
+			<source ref="id40"/>
+			<target ref="id81"/>
+			<label kind="assignment" x="-968" y="552">move_7_1()</label>
+		</transition>
+		<transition id="id152">
+			<source ref="id39"/>
+			<target ref="id80"/>
+			<label kind="assignment" x="-968" y="510">move_7_0()</label>
+		</transition>
+		<transition id="id153">
+			<source ref="id38"/>
+			<target ref="id79"/>
+			<label kind="assignment" x="-968" y="467">move_6_3()</label>
+		</transition>
+		<transition id="id154">
+			<source ref="id37"/>
+			<target ref="id78"/>
+			<label kind="assignment" x="-968" y="425">move_6_2()</label>
+		</transition>
+		<transition id="id155">
+			<source ref="id36"/>
+			<target ref="id77"/>
+			<label kind="assignment" x="-968" y="382">move_6_1()</label>
+		</transition>
+		<transition id="id156">
+			<source ref="id35"/>
+			<target ref="id76"/>
+			<label kind="assignment" x="-968" y="340">move_6_0()</label>
+		</transition>
+		<transition id="id157">
+			<source ref="id34"/>
+			<target ref="id75"/>
+			<label kind="assignment" x="-968" y="297">move_5_3()</label>
+		</transition>
+		<transition id="id158">
+			<source ref="id33"/>
+			<target ref="id74"/>
+			<label kind="assignment" x="-968" y="255">move_5_2()</label>
+		</transition>
+		<transition id="id159">
+			<source ref="id32"/>
+			<target ref="id73"/>
+			<label kind="assignment" x="-968" y="212">move_5_1()</label>
+		</transition>
+		<transition id="id160">
+			<source ref="id31"/>
+			<target ref="id72"/>
+			<label kind="assignment" x="-968" y="170">move_5_0()</label>
+		</transition>
+		<transition id="id161">
+			<source ref="id30"/>
+			<target ref="id71"/>
+			<label kind="assignment" x="-968" y="127">move_4_3()</label>
+		</transition>
+		<transition id="id162">
+			<source ref="id29"/>
+			<target ref="id70"/>
+			<label kind="assignment" x="-968" y="84">move_4_2()</label>
+		</transition>
+		<transition id="id163">
+			<source ref="id28"/>
+			<target ref="id69"/>
+			<label kind="assignment" x="-968" y="42">move_4_1()</label>
+		</transition>
+		<transition id="id164">
+			<source ref="id27"/>
+			<target ref="id68"/>
+			<label kind="assignment" x="-968" y="-1">move_4_0()</label>
+		</transition>
+		<transition id="id165">
+			<source ref="id67"/>
+			<target ref="id0"/>
+			<label kind="assignment" x="-1631" y="17">init_board()</label>
+		</transition>
+		<transition id="id166">
+			<source ref="id26"/>
+			<target ref="id66"/>
+			<label kind="assignment" x="-968" y="-59">move_3_3()</label>
+		</transition>
+		<transition id="id167">
+			<source ref="id25"/>
+			<target ref="id65"/>
+			<label kind="assignment" x="-968" y="-102">move_3_2()</label>
+		</transition>
+		<transition id="id168">
+			<source ref="id24"/>
+			<target ref="id64"/>
+			<label kind="assignment" x="-968" y="-144">move_3_1()</label>
+		</transition>
+		<transition id="id169">
+			<source ref="id23"/>
+			<target ref="id63"/>
+			<label kind="assignment" x="-968" y="-187">move_3_0()</label>
+		</transition>
+		<transition id="id170">
+			<source ref="id22"/>
+			<target ref="id62"/>
+			<label kind="assignment" x="-968" y="-238">move_2_3()</label>
+		</transition>
+		<transition id="id171">
+			<source ref="id21"/>
+			<target ref="id61"/>
+			<label kind="assignment" x="-968" y="-289">move_2_2()</label>
+		</transition>
+		<transition id="id172">
+			<source ref="id20"/>
+			<target ref="id60"/>
+			<label kind="assignment" x="-968" y="-331">move_2_1()</label>
+		</transition>
+		<transition id="id173">
+			<source ref="id19"/>
+			<target ref="id59"/>
+			<label kind="assignment" x="-968" y="-374">move_2_0()</label>
+		</transition>
+		<transition id="id174">
+			<source ref="id18"/>
+			<target ref="id58"/>
+			<label kind="assignment" x="-968" y="-433">move_1_3()</label>
+		</transition>
+		<transition id="id175">
+			<source ref="id17"/>
+			<target ref="id57"/>
+			<label kind="assignment" x="-968" y="-484">move_1_2()</label>
+		</transition>
+		<transition id="id176">
+			<source ref="id16"/>
+			<target ref="id56"/>
+			<label kind="assignment" x="-968" y="-535">move_1_1()</label>
+		</transition>
+		<transition id="id177">
+			<source ref="id15"/>
+			<target ref="id55"/>
+			<label kind="assignment" x="-968" y="-587">move_1_0()</label>
+		</transition>
+		<transition id="id178">
+			<source ref="id14"/>
+			<target ref="id54"/>
+			<label kind="assignment" x="-968" y="-654">move_0_3()</label>
+		</transition>
+		<transition id="id179">
+			<source ref="id13"/>
+			<target ref="id53"/>
+			<label kind="assignment" x="-968" y="-705">move_0_2()</label>
+		</transition>
+		<transition id="id180">
+			<source ref="id12"/>
+			<target ref="id52"/>
+			<label kind="assignment" x="-968" y="-765">move_0_1()</label>
+		</transition>
+		<transition id="id181">
+			<source ref="id11"/>
+			<target ref="id51"/>
+			<label kind="assignment" x="-968" y="-833">move_0_0()</label>
+		</transition>
+		<transition id="id182">
+			<source ref="id8"/>
+			<target ref="id50"/>
+			<label kind="guard" x="-1146" y="913">can_move[9][3]</label>
+		</transition>
+		<transition id="id183">
+			<source ref="id8"/>
+			<target ref="id49"/>
+			<label kind="guard" x="-1146" y="892">can_move[9][2]</label>
+		</transition>
+		<transition id="id184">
+			<source ref="id8"/>
+			<target ref="id48"/>
+			<label kind="guard" x="-1146" y="871">can_move[9][1]</label>
+		</transition>
+		<transition id="id185">
+			<source ref="id8"/>
+			<target ref="id47"/>
+			<label kind="guard" x="-1146" y="850">can_move[9][0]</label>
+		</transition>
+		<transition id="id186">
+			<source ref="id7"/>
+			<target ref="id46"/>
+			<label kind="guard" x="-1146" y="735">can_move[8][3]</label>
+		</transition>
+		<transition id="id187">
+			<source ref="id7"/>
+			<target ref="id45"/>
+			<label kind="guard" x="-1146" y="714">can_move[8][2]</label>
+		</transition>
+		<transition id="id188">
+			<source ref="id7"/>
+			<target ref="id44"/>
+			<label kind="guard" x="-1146" y="692">can_move[8][1]</label>
+		</transition>
+		<transition id="id189">
+			<source ref="id7"/>
+			<target ref="id43"/>
+			<label kind="guard" x="-1146" y="671">can_move[8][0]</label>
+		</transition>
+		<transition id="id190">
+			<source ref="id6"/>
+			<target ref="id42"/>
+			<label kind="guard" x="-1146" y="569">can_move[7][3]</label>
+		</transition>
+		<transition id="id191">
+			<source ref="id6"/>
+			<target ref="id41"/>
+			<label kind="guard" x="-1146" y="548">can_move[7][2]</label>
+		</transition>
+		<transition id="id192">
+			<source ref="id6"/>
+			<target ref="id40"/>
+			<label kind="guard" x="-1146" y="526">can_move[7][1]</label>
+		</transition>
+		<transition id="id193">
+			<source ref="id6"/>
+			<target ref="id39"/>
+			<label kind="guard" x="-1146" y="505">can_move[7][0]</label>
+		</transition>
+		<transition id="id194">
+			<source ref="id9"/>
+			<target ref="id38"/>
+			<label kind="guard" x="-1146" y="399">can_move[6][3]</label>
+		</transition>
+		<transition id="id195">
+			<source ref="id9"/>
+			<target ref="id37"/>
+			<label kind="guard" x="-1146" y="378">can_move[6][2]</label>
+		</transition>
+		<transition id="id196">
+			<source ref="id9"/>
+			<target ref="id36"/>
+			<label kind="guard" x="-1146" y="356">can_move[6][1]</label>
+		</transition>
+		<transition id="id197">
+			<source ref="id9"/>
+			<target ref="id35"/>
+			<label kind="guard" x="-1146" y="335">can_move[6][0]</label>
+		</transition>
+		<transition id="id198">
+			<source ref="id5"/>
+			<target ref="id34"/>
+			<label kind="guard" x="-1146" y="225">can_move[5][3]</label>
+		</transition>
+		<transition id="id199">
+			<source ref="id5"/>
+			<target ref="id33"/>
+			<label kind="guard" x="-1146" y="203">can_move[5][2]</label>
+		</transition>
+		<transition id="id200">
+			<source ref="id5"/>
+			<target ref="id32"/>
+			<label kind="guard" x="-1146" y="182">can_move[5][1]</label>
+		</transition>
+		<transition id="id201">
+			<source ref="id5"/>
+			<target ref="id31"/>
+			<label kind="guard" x="-1146" y="161">can_move[5][0]</label>
+		</transition>
+		<transition id="id202">
+			<source ref="id4"/>
+			<target ref="id30"/>
+			<label kind="guard" x="-1139" y="76">can_move[4][3]</label>
+		</transition>
+		<transition id="id203">
+			<source ref="id4"/>
+			<target ref="id29"/>
+			<label kind="guard" x="-1139" y="51">can_move[4][2]</label>
+		</transition>
+		<transition id="id204">
+			<source ref="id4"/>
+			<target ref="id28"/>
+			<label kind="guard" x="-1139" y="25">can_move[4][1]</label>
+		</transition>
+		<transition id="id205">
+			<source ref="id4"/>
+			<target ref="id27"/>
+			<label kind="guard" x="-1138" y="-1">can_move[4][0]</label>
+		</transition>
+		<transition id="id206">
+			<source ref="id3"/>
+			<target ref="id26"/>
+			<label kind="guard" x="-1130" y="-110">can_move[3][3]</label>
+		</transition>
+		<transition id="id207">
+			<source ref="id3"/>
+			<target ref="id25"/>
+			<label kind="guard" x="-1130" y="-136">can_move[3][2]</label>
+		</transition>
+		<transition id="id208">
+			<source ref="id3"/>
+			<target ref="id24"/>
+			<label kind="guard" x="-1139" y="-161">can_move[3][1]</label>
+		</transition>
+		<transition id="id209">
+			<source ref="id3"/>
+			<target ref="id23"/>
+			<label kind="guard" x="-1138" y="-191">can_move[3][0]</label>
+		</transition>
+		<transition id="id210">
+			<source ref="id2"/>
+			<target ref="id22"/>
+			<label kind="guard" x="-1130" y="-280">can_move[2][3]</label>
+		</transition>
+		<transition id="id211">
+			<source ref="id2"/>
+			<target ref="id21"/>
+			<label kind="guard" x="-1130" y="-314">can_move[2][2]</label>
+		</transition>
+		<transition id="id212">
+			<source ref="id2"/>
+			<target ref="id20"/>
+			<label kind="guard" x="-1139" y="-340">can_move[2][1]</label>
+		</transition>
+		<transition id="id213">
+			<source ref="id2"/>
+			<target ref="id19"/>
+			<label kind="guard" x="-1139" y="-374">can_move[2][0]</label>
+		</transition>
+		<transition id="id214">
+			<source ref="id1"/>
+			<target ref="id18"/>
+			<label kind="guard" x="-1138" y="-480">can_move[1][3]</label>
+		</transition>
+		<transition id="id215">
+			<source ref="id1"/>
+			<target ref="id17"/>
+			<label kind="guard" x="-1138" y="-505">can_move[1][2]</label>
+		</transition>
+		<transition id="id216">
+			<source ref="id1"/>
+			<target ref="id16"/>
+			<label kind="guard" x="-1138" y="-535">can_move[1][1]</label>
+		</transition>
+		<transition id="id217">
+			<source ref="id1"/>
+			<target ref="id15"/>
+			<label kind="guard" x="-1138" y="-569">can_move[1][0]</label>
+		</transition>
+		<transition id="id218">
+			<source ref="id10"/>
+			<target ref="id14"/>
+			<label kind="guard" x="-1130" y="-697">can_move[0][3]</label>
+		</transition>
+		<transition id="id219">
+			<source ref="id10"/>
+			<target ref="id13"/>
+			<label kind="guard" x="-1122" y="-731">can_move[0][2]</label>
+		</transition>
+		<transition id="id220">
+			<source ref="id10"/>
+			<target ref="id12"/>
+			<label kind="guard" x="-1130" y="-765">can_move[0][1]</label>
+		</transition>
+		<transition id="id221">
+			<source ref="id10"/>
+			<target ref="id11"/>
+			<label kind="guard" x="-1147" y="-833">can_move[0][0]</label>
+		</transition>
+		<transition id="id222">
+			<source ref="id0"/>
+			<target ref="id8"/>
+			<label kind="guard" x="-1453" y="510">piece_is_valid(9)</label>
+		</transition>
+		<transition id="id223">
+			<source ref="id0"/>
+			<target ref="id7"/>
+			<label kind="guard" x="-1385" y="442">piece_is_valid(8)</label>
+		</transition>
+		<transition id="id224">
+			<source ref="id0"/>
+			<target ref="id6"/>
+			<label kind="guard" x="-1343" y="340">piece_is_valid(7)</label>
+		</transition>
+		<transition id="id225">
+			<source ref="id0"/>
+			<target ref="id9"/>
+			<label kind="guard" x="-1377" y="238">piece_is_valid(6)</label>
+		</transition>
+		<transition id="id226">
+			<source ref="id0"/>
+			<target ref="id5"/>
+			<label kind="guard" x="-1368" y="144">piece_is_valid(5)</label>
+		</transition>
+		<transition id="id227">
+			<source ref="id0"/>
+			<target ref="id4"/>
+			<label kind="guard" x="-1411" y="25">piece_is_valid(4)</label>
+		</transition>
+		<transition id="id228">
+			<source ref="id0"/>
+			<target ref="id3"/>
+			<label kind="guard" x="-1428" y="-51">piece_is_valid(3)</label>
+		</transition>
+		<transition id="id229">
+			<source ref="id0"/>
+			<target ref="id2"/>
+			<label kind="guard" x="-1411" y="-144">piece_is_valid(2)</label>
+		</transition>
+		<transition id="id230">
+			<source ref="id0"/>
+			<target ref="id10"/>
+			<label kind="guard" x="-1428" y="-399">piece_is_valid(0)</label>
+		</transition>
+		<transition id="id231">
+			<source ref="id0"/>
+			<target ref="id1"/>
+			<label kind="guard" x="-1402" y="-246">piece_is_valid(1)</label>
+		</transition>
+	</template>
+	<system>// Place template instantiations here.
+Process = Template();
+// List one or more processes to be composed into a system.
+system Process;
+</system>
+	<queries>
+		<query>
+			<formula>E&lt;&gt; check_success()</formula>
+			<comment/>
+			<option key="--diagnostic" value="-1"/>
+		</query>
+		<query>
+			<formula>A[] not deadlock</formula>
+			<comment/>
+			<option key="--diagnostic" value="1"/>
+		</query>
+	</queries>
+</nta>

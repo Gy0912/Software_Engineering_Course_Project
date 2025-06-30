@@ -1,0 +1,11 @@
+image: pandoc/core:latest
+
+pages:
+  script:
+    - mkdir .public
+    - pandoc tracing.md -s -o .public/index.html
+  artifacts:
+    paths:
+      - .public
+  only:
+    - master

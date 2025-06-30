@@ -1,0 +1,8 @@
+set@9#82#112611530753044
+move@Zu4#Down
+undo
+move@Zu3#Left
+move@Machao#Up
+undo
+move@Huangzhong#Right
+undo
